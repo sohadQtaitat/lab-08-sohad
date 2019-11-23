@@ -182,20 +182,40 @@ const checkOtherDB = function(queryData, response, tabletitle, errorHandler){
  
  
  
-//   return pgClient.query(querySQL, values).then((data) => {
-//     if(data.rowCount) {
-//       let arr;
-//       if (tabletitle === 'weather'){
-//         arr = 'dailyforecast';
-//       } else {
-//         arr = 'events';
-//       }
+  return pgClient.query(querySQL, values).then((data) => {
+    if(data.rowCount) {
+      let arr;
+      if (tabletitle === 'weather'){
+        arr = 'dailyforecast';
+      } else {
+        arr = 'events';
+      }
  
  
  
+ 
+      return response.status(200).send(data.rows[0][arr]);
+    } else {
+      let URL;
+      if (tabletitle === 'weather'){
+        URL = weatherURL;
+      } else {
+        URL = eventURL;
+      }
+      superagent.get(URL)
+        .end((err, res) => {
+          if (err && err.status !== 200) {
+            errorHandler(response, 500);
+          } else {
+ 
+ 
+ 
+ 
+        
+          } });}});};
 
 const errorHandler = function(res, code) {
-  const errorResponse = {'status': code, 'something wrong' };
+  const errorResponse = {'status': code, 'responseText': 'Sorry, something wrong' };
   return res.status(500).send(errorResponse);
 };
 
