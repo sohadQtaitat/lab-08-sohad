@@ -1,9 +1,6 @@
 DROP TABLE IF EXISTS location;
-
 DROP TABLE IF EXISTS weather;
-
-DROP TABLE IF EXISTS event;
-
+DROP TABLE IF EXISTS events;
 
 CREATE TABLE location (
   latitude DECIMAL,
@@ -12,17 +9,16 @@ CREATE TABLE location (
   search_query VARCHAR(255)
 );
 
-
 CREATE TABLE weather (
-  dailyForecast JSON,
-  search_query VARCHAR(255)
+  formatted_query VARCHAR(255),
+  forecast VARCHAR(512),
+  time VARCHAR(255)
 );
 
-
-CREATE TABLE event (
-  events JSON,
-  search_query VARCHAR(255)
-);
-
-
-
+CREATE TABLE events (
+  formatted_query VARCHAR(255),
+  link VARCHAR(255),
+  name VARCHAR(255),
+  event_date VARCHAR(255),
+  summary TEXT
+)
