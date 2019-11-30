@@ -2,245 +2,201 @@
 
 require('dotenv').config();
 
-
-const superagent = require('superagent');
-
 const express = require('express');
-
-const app = express();
 
 const cors = require('cors');
 
+const superagent = require('superagent');
+
 const pg = require('pg');
 
+const PORT = process.env.PORT;
 
-const PORT = process.env.PORT || 3000;
+const app = express();
+
+
+
+///////////////////////////////////////// Database Connection Setup/////////////////////////////////////////
+
+
+
+const client = new pg.Client(process.env.DATABASE_URL);
+
+client.on('error', err => { throw err; });
 
 app.use(cors());
 
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////
 
-const pgClient = new pg.Client(process.env.DATABASE_URL);
-pgClient.connect();
+app.get('/location', locationData);
+
+app.get('/weather', weatherData);
+
+app.get('/events', eventinfo);
 
 
 
-app.get('/events', (request, response) => {
-    checkOtherDB(request, response, 'event', errorHandler);
+
+
+
+
+
+client.connect()
+  .then(() => {
+    app.listen(PORT, () => console.log(`App Listening on ${PORT}`));
+  })
+  .catch(err => {
+    throw `PG Startup Error: ${err.message}`;
   });
-
-  
-
-app.get('/weather', (request, response) => {
-  checkOtherDB(request, response, 'weather', errorHandler);
-});
+//////////////////////////////////////////////////////////// Location///////////////////////////////////////////////
 
 
+function locationData(request, response) {
 
-app.get('/location', (request, response) => {
-  const queryData = request.query.data;
-  locationDatabase(queryData,response);
-});
+  let city = request.query.data;
 
+  let SQL = 'SELECT * FROM location WHERE search_query = $1 ;';
+
+  let values = [city];
+
+  client.query(SQL, values)
 
 
 
+    .then(results => {
+      if (results.rowCount) {
 
+        return response.status(200).json(results.rows[0]);
+      } else {
+        console.log(city + 'not found in DB');
+        getlocationData(city, response);
+      }
+    });
 
-const Location = function(searchQuery, jsonData) {
-  const formatQuery = jsonData['formatted_address'];
-
-
-  const latitude = jsonData['geometry']['location']['lat'];
-
-
-  const longitude = jsonData['geometry']['location']['lng'];
-
-
-
-
-  this.search_query = searchQuery;
-  this.formatted_query = formatQuery;
-  this.latitude = latitude;
-  this.longitude = longitude;
-};
+}
 
 
 
+function getlocationData(city, response) {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${city}&key=${process.env.GEOCODE_API_KEY}`;
 
-const Weather = function(jsonData) {
+  return superagent.get(url)
+    .then(data => {
+      return new Location(city, data.body);
+    })
 
-  this.dailyForecast = [...jsonData.body.daily.data].map(forecast => {
-
-    const statues = forecast['statues'];
-
-    const time = (new Date(forecast['time'] * 1000)).toDateString();
-
-
-    return {
-        'time': time,
-        'forecast': statues
-    };
-  });
-};
-
-const Event = function(jsonData) {
-
-  this.events = [...jsonData.body.events].slice(0, 20).map((event) => {
-
-    const link = event.url;
-
-    const title = event.title.text;
-
-    const event_date = new Date(event.start.utc).toDateString();
-
-    const statues = event.description.text;
-
-    return {
-      'link': link,
-      'title': title,
-      'event_date': event_date,
-      'statues': statues
-    };
-  });
-};
-
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-const locationDatabase = function(queryData, response){
-
-  const querySQL = 'SELECT * FROM location WHERE search_query = $1';
-
-  const values = [ queryData ];
-
-  return pgClient.query(querySQL,values).then((data) => {
-
-    if(data.rowCount) {
     
-        return response.status(200).send(data.rows[0]);
+    .then(locationInstance => {
 
-    } else {
-
-
-
-      let geocodeURL = `https://maps.googleapis.com/maps/api/geocode/json?address=${queryData}&key=${process.env.GEOCODE_API_KEY}`;
-
-
-      superagent.get(geocodeURL)
-
-
-        .end((err, res) => {
-          if (err && err.status !== 200) {
-            const errorResponse500 = {'status': 500, 'responseText': 'Sorry, something went wrong' };
-            return response.status(500).send(errorResponse500);
-          } else {
-
-
-            let location = new Location(queryData, res.body.results[0]);
-            const sqlInsert = 'INSERT INTO location (latitude, longitude, formatted_query, search_query) VALUES ($1, $2, $3, $4)';
-            const args = [ location.latitude, location.longitude, location.formatted_query, location.search_query];
-
-            pgClient.query(sqlInsert, args);
-            return response.status(200).send(location);
-          }
+      let SQL = 'INSERT INTO location (search_query , formatted_query, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *;';
+      
+      let dataBaseValue = [locationInstance.search_query, locationInstance.formatted_query, locationInstance.latitude, locationInstance.longitude];
+      
+      client.query(SQL, dataBaseValue)
+      
+      
+      .then(results => {
+          return response.status(200).json(results.rows[0]);
         });
-    }
-  });
-};
+    });
+}
+
+
+function Location(city, data) {
+  this.search_query = city;
+  this.formatted_query = data.results[0].formatted_address;
+  this.latitude = data.results[0].geometry.location.lat;
+  this.longitude = data.results[0].geometry.location.lng;
+}
 
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////Weather/////////////////////////////////////////////////////////////////////
 
 
 
 
+function weatherData(request, response) {
 
-const checkOtherDB = function(queryData, response, tabletitle, errorHandler){
-
-  const weatherURL =`https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${queryData.query.data.latitude},${queryData.query.data.longitude}`;
+  getweatherData(request.query.data)
   
-  const eventURL =`https://www.eventbriteapi.com/v3/events/search?location.longitude=${queryData.query.data.longitude}&location.latitude=${queryData.query.data.latitude}&expand=venue&token=${process.env.EVENTBRITE_API_KEY}`;
- 
- 
-  let querySQL;
-  if (tabletitle === 'weather'){
-    querySQL = 'SELECT * FROM weather WHERE search_query = $1';
-  } else {
-    querySQL = 'SELECT * FROM event WHERE search_query = $1';
-  }
-  let values = [ queryData.query.data.search_query ];
- 
- 
- 
- 
-  return pgClient.query(querySQL, values).then((data) => {
-    if(data.rowCount) {
-      let arr;
-      if (tabletitle === 'weather'){
-        arr = 'dailyforecast';
-      } else {
-        arr = 'events';
+  .then(weatherData => response.status(200).json(weatherData));
+}
+
+
+
+function getweatherData(query) {
+
+  const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${query.latitude},${query.longitude}`;
+
+  return superagent.get(url)
+    .then(data => {
+      let weather = data.body;
+      return weather.daily.data.map((day) => {
+        return new Weather(day);
+      });
+    });
+}
+
+
+
+function Weather(day) {
+  // this.dailyForecast = [...jsonData.body.daily.data].map(forecast => {
+
+  this.forecast = day.summary;
+  this.time = new Date(day.time * 1000).toDateString();
+   return {
+      'forecast': summary,
+      'time': time
+    };
+}
+
+
+//////////////////////////////////////////// Event//////////////////////////////////////////////////////////////////////
+function eventinfo(request, response) {
+
+  eventData(request.query.data.search_query)
+  
+  .then(eventData => response.status(200).json(eventData));
+}
+
+
+
+function eventData(city) {
+
+  const url = `http://api.eventful.com/json/events/search?app_key=${process.env.EVENTBRITE_API_KEY}&location=${city}`;
+
+  return superagent.get(url)
+
+  
+  
+  .then(data => {
+      let list = JSON.parse(data.text);
+      if (list.events) {
+        return list.events.event.map((day) => {
+          return new Event(day);
+        });
       }
- 
- 
- 
- 
-      return response.status(200).send(data.rows[0][arr]);
-    } else {
-      let URL;
-      if (tabletitle === 'weather'){
-        URL = weatherURL;
-      } else {
-        URL = eventURL;
-      }
-      superagent.get(URL)
-        .end((err, res) => {
-          if (err && err.status !== 200) {
-            errorHandler(response, 500);
-          } else {
- 
- 
- 
- 
-        
-          } });}});};
-
-const errorHandler = function(res, code) {
-  const errorResponse = {'status': code, 'responseText': 'Sorry, something wrong' };
-  return res.status(500).send(errorResponse);
-};
+    });
+}
 
 
 
+function Event(day) {
+  this.link = day.url;
+  this.name = day.title;
+  this.event_date = day.start_time;
+  this.summary = day.description;
+}
 
 
-/////////////////////////////////////////////////-----------Error------------/////////////////////////////Sohad/
-
-
-
-
-app.get('/foo',(request,response) =>{
-    throw new Error('ops');
-})
 
 app.use('*', (request, response) => {
-    response.status(404).send('Not Found')
-})
-
-app.use((error,request,response) => {
-    response.status(500).send(error)
-})
-
-/////////////////////////////////////////////////-----------listening for requests------------/////////////////////////////Sohad/
-
- 
-app.listen(PORT, () => console.log(`App is listening on ${PORT}`));
+  response.status(404).send('something goes wrong ');
+});
+app.use((error, request, response) => {
+  response.status(500).send(error);
+});
