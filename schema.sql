@@ -3,17 +3,12 @@ DROP TABLE IF EXISTS weather;
 DROP TABLE IF EXISTS events;
 
 CREATE TABLE location (
-  latitude DECIMAL,
-  longitude DECIMAL,
+  search_query VARCHAR(255),
   formatted_query VARCHAR(255),
-  search_query VARCHAR(255)
+  latitude DECIMAL,
+  longitude DECIMAL
 );
 
-CREATE TABLE weather (
-  formatted_query VARCHAR(255),
-  forecast VARCHAR(512),
-  time VARCHAR(255)
-);
 
 CREATE TABLE events (
   formatted_query VARCHAR(255),
@@ -22,3 +17,11 @@ CREATE TABLE events (
   event_date VARCHAR(255),
   summary TEXT
 )
+
+
+CREATE TABLE weather (
+  forecast VARCHAR(512),
+  time VARCHAR(255),
+  formatted_query VARCHAR(255)
+);
+
