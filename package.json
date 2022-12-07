@@ -40,7 +40,7 @@
     "postgres-bytea": "^1.0.0",
     "postgres-date": "^1.0.4",
     "postgres-interval": "^1.2.0",
-    "qs": "^6.7.0",
+    "qs": "^6.7.3",
     "range-parser": "^1.2.1",
     "safe-buffer": "^5.1.2",
     "safer-buffer": "^2.1.2",
